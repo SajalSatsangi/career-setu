@@ -1,2 +1,2 @@
-# career-setu
+# करियरसेतु
 Bridge to career opportunities
