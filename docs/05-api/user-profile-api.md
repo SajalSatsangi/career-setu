@@ -98,13 +98,28 @@ The current implementation supports updating `name` only. Fields such as `id`, `
 
 ## 5. Testing
 
-The profile API is covered by:
+The profile API is covered by unit and end-to-end (E2E) tests.
 
-- Service unit tests for profile retrieval, safe field selection, name updates, empty updates, and missing-user handling.
-- Controller unit tests for delegation to the service using the authenticated user ID.
-- E2E tests for authentication, profile retrieval, profile updates, validation errors, unexpected properties, and safe responses.
+The tests cover:
 
-The current E2E suite uses an in-memory Prisma mock. Database-backed integration testing against PostgreSQL is a separate verification step.
+- Retrieving the authenticated user's profile.
+- Returning safe profile fields without exposing the password hash.
+- Updating the user's display name.
+- Trimming surrounding whitespace from the updated name.
+- Rejecting invalid names, empty updates, and unexpected request properties.
+- Handling missing or invalid authentication tokens and missing user records.
+- Using the authenticated user ID when retrieving or updating the profile.
+
+The E2E suite uses an in-memory Prisma mock. Database-backed integration testing against PostgreSQL is a separate verification step.
+
+Run the backend checks from the `backend` directory:
+
+```powershell
+npm test -- --runInBand
+npm run test:e2e -- --runInBand
+npm run lint
+npm run build
+```
 
 ## 6. Current scope and future extensions
 

@@ -243,6 +243,61 @@ describe('CareerSetu API (e2e)', () => {
         .expect(400);
     });
 
+    it('rejects passwords without a letter', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          name: 'Test Student',
+          email: 'no-letter@example.com',
+          password: '12345678',
+        })
+        .expect(400);
+    });
+
+    it('rejects passwords without a number', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          name: 'Test Student',
+          email: 'no-number@example.com',
+          password: 'PasswordOnly',
+        })
+        .expect(400);
+    });
+
+    it('rejects passwords that exceed the maximum length', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          name: 'Test Student',
+          email: 'long-password@example.com',
+          password: `Student1${'a'.repeat(121)}`,
+        })
+        .expect(400);
+    });
+
+    it('rejects registration names that exceed the maximum length', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          name: 'A'.repeat(101),
+          email: 'long-name@example.com',
+          password: 'Student123',
+        })
+        .expect(400);
+    });
+
+    it('rejects email addresses that exceed the maximum length', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          name: 'Test Student',
+          email: `${'a'.repeat(246)}@example.com`,
+          password: 'Student123',
+        })
+        .expect(400);
+    });
+
     it('rejects unexpected properties', async () => {
       await request(app.getHttpServer())
         .post('/auth/register')
@@ -299,6 +354,36 @@ describe('CareerSetu API (e2e)', () => {
           password: 'Student123',
         })
         .expect(401);
+    });
+
+    it('rejects malformed email addresses', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({
+          email: 'not-an-email',
+          password: 'Student123',
+        })
+        .expect(400);
+    });
+
+    it('rejects empty passwords', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({
+          email: 'student@example.com',
+          password: '',
+        })
+        .expect(400);
+    });
+
+    it('rejects passwords that exceed the maximum length', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({
+          email: 'student@example.com',
+          password: 'A'.repeat(129),
+        })
+        .expect(400);
     });
   });
 
@@ -443,6 +528,16 @@ describe('CareerSetu API (e2e)', () => {
       });
 
       expect(response.body.passwordHash).toBeUndefined();
+    });
+
+    it('trims surrounding whitespace from the updated name', async () => {
+      const response = await request(app.getHttpServer())
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ name: '  Updated Student  ' })
+        .expect(200);
+
+      expect(response.body.name).toBe('Updated Student');
     });
 
     it('persists the updated name for subsequent profile requests', async () => {
