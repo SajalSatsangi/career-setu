@@ -135,7 +135,18 @@ This is a stateless logout operation. The server does not revoke an issued JWT, 
 
 ## 5. Testing
 
-Authentication is covered by unit and end-to-end tests, including registration, duplicate-email rejection, validation, successful login, incorrect credentials, current-user retrieval, and missing, invalid, and expired tokens.
+Authentication is covered by unit and end-to-end (E2E) tests for registration, login, JWT authentication, and request validation.
+
+The E2E tests cover:
+
+- Successful registration and duplicate-email rejection.
+- Registration validation for passwords without a letter, passwords without a number, passwords exceeding 128 characters, names exceeding 100 characters, and emails exceeding 255 characters.
+- Login validation for malformed email addresses, empty passwords, and passwords exceeding 128 characters.
+- Successful login and rejection of invalid credentials.
+- Current-user retrieval with missing, invalid, and expired tokens.
+- Rejection of unexpected request properties.
+
+The backend test suites have been verified with **23 unit tests and 33 E2E tests passing**. The E2E suite uses a mocked Prisma service; these results do not establish that database-backed integration tests against PostgreSQL have passed.
 
 Run the backend checks from the `backend` directory:
 
