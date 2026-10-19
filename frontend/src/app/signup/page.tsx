@@ -1,507 +1,448 @@
 
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useMemo, useState, type FormEvent } from "react";
 import {
   getPasswordRequirements,
   validateSignupForm,
   type SignupFormData,
-  type SignupFormErrors,
 } from "@/lib/validation/signup";
-import { createAccount, SignupError } from "@/lib/api/signup";
+import {
+  createAccount,
+  SignupError,
+} from "@/lib/api/signup";
 import "./signup.css";
 
-const INITIAL_FORM: SignupFormData = {
-  fullName: "",
-  email: "",
-  password: "",
-  confirmPassword: "",
-  acceptedTerms: false,
-};
+const STRENGTH_LABELS = [
+  "Too weak",
+  "Weak",
+  "Fair",
+  "Good",
+  "Strong",
+];
 
-const PASSWORD_CHECKS = [
-  { key: "hasMinimumLength", label: "8+ characters" },
-  { key: "hasUppercase", label: "1 uppercase letter" },
-  { key: "hasNumber", label: "1 numeric digit" },
-  { key: "hasSpecialCharacter", label: "1 special symbol" },
-] as const;
+function scorePassword(password: string): number {
+  if (!password) return 0;
 
-function PasswordVisibilityIcon({ isVisible }: { isVisible: boolean }) {
+  const requirements = getPasswordRequirements(password);
+  let score = 0;
+
+  if (requirements.hasMinimumLength) score++;
+  if (requirements.hasUppercase) score++;
+  if (requirements.hasNumber) score++;
+  if (requirements.hasSpecialCharacter) score++;
+
+  return Math.max(score, 1);
+}
+
+function Particles() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {isVisible ? (
-        <>
-          <path d="M3 3l18 18" />
-          <path d="M10.6 10.6a2 2 0 002.8 2.8" />
-          <path d="M9.9 5.2A10.8 10.8 0 0112 5c5 0 8.5 4.2 9.5 7-.4 1.1-1.2 2.3-2.3 3.4" />
-          <path d="M6.2 6.2C3.9 7.6 2.7 9.6 2.5 12c1 2.8 4.5 7 9.5 7 1.1 0 2.1-.2 3-.6" />
-        </>
-      ) : (
-        <>
-          <path d="M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z" />
-          <circle cx="12" cy="12" r="3" />
-        </>
-      )}
-    </svg>
+    <div className="cs-particles" aria-hidden="true">
+      {Array.from({ length: 28 }, (_, index) => {
+        const size = 2 + ((index * 7) % 4);
+
+        return (
+          <span
+            key={index}
+            style={{
+              left: `${(index * 37) % 100}%`,
+              width: size,
+              height: size,
+              animationDuration: `${14 + ((index * 5) % 14)}s`,
+              animationDelay: `-${(index * 3) % 20}s`,
+            }}
+          />
+        );
+      })}
+    </div>
   );
 }
 
-export default function SignupPage() {
-  const [formData, setFormData] = useState(INITIAL_FORM);
-  const [errors, setErrors] = useState<SignupFormErrors>({});
-  const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+export default function SignUpPage() {
+  const router = useRouter();
+
+  const [formData, setFormData] = useState<SignupFormData>({
+    fullName: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+    acceptedTerms: false,
+  });
+
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [accountExistsEmail, setAccountExistsEmail] = useState("");
-  const [formMessage, setFormMessage] = useState("");
-  const [messageType, setMessageType] = useState<"error" | "success">("error");
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof SignupFormData, string>>
+  >({});
+  const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState<{
+    type: "error" | "success";
+    text: string;
+  } | null>(null);
 
-  const passwordRequirements = getPasswordRequirements(formData.password);
-  const completedRequirementCount = Object.values(
-    passwordRequirements
-  ).filter(Boolean).length;
-
-  const passwordStrength = !formData.password
-    ? "Not entered"
-    : completedRequirementCount <= 1
-      ? "Weak"
-      : completedRequirementCount === 2
-        ? "Fair"
-        : completedRequirementCount === 3
-          ? "Good"
-          : "Strong";
-
-  const passwordsMatch =
-    formData.password === formData.confirmPassword;
+  const strength = useMemo(
+    () => scorePassword(formData.password),
+    [formData.password],
+  );
 
   function updateField<K extends keyof SignupFormData>(
-    fieldName: K,
-    value: SignupFormData[K]
+    field: K,
+    value: SignupFormData[K],
   ) {
-    const updatedForm = { ...formData, [fieldName]: value };
-    setFormData(updatedForm);
-    setFormMessage("");
+    setFormData((current) => ({ ...current, [field]: value }));
 
-    if (fieldName === "email") {
-      setAccountExistsEmail("");
-    }
+    setErrors((current) => ({
+      ...current,
+      [field]: undefined,
+    }));
 
-    if (hasSubmitted) {
-      setErrors(validateSignupForm(updatedForm));
-    }
+    setFeedback(null);
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setHasSubmitted(true);
-    setFormMessage("");
-    setAccountExistsEmail("");
+    setFeedback(null);
 
     const validationErrors = validateSignupForm(formData);
     setErrors(validationErrors);
 
-    if (Object.keys(validationErrors).length > 0) {
-      return;
-    }
+    if (Object.keys(validationErrors).length > 0) return;
 
-    setIsSubmitting(true);
+    setLoading(true);
 
     try {
-      const result = await createAccount(formData);
-      setMessageType("success");
-      setFormMessage(result.message ?? "Account created successfully.");
-    } catch (error) {
-      if (error instanceof SignupError && error.code === "ACCOUNT_EXISTS") {
-        setAccountExistsEmail(formData.email.trim());
-      }
+      await createAccount(formData);
 
-      setMessageType("error");
-      setFormMessage(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong. Please try again."
-      );
+      setFeedback({
+        type: "success",
+        text: "Your account has been created. Redirecting to sign in…",
+      });
+
+      window.setTimeout(() => {
+        router.push("/login");
+      }, 900);
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        text:
+          error instanceof SignupError
+            ? error.message
+            : "Something went wrong. Please try again.",
+      });
     } finally {
-      setIsSubmitting(false);
+      setLoading(false);
     }
   }
 
   return (
-    <main className="signup-page">
-      <section className="signup-shell">
-        <aside className="signup-brand">
-          <a className="brand-logo" href="/" aria-label="CareerSetu home">
-            <span className="brand-icon">CS</span>
-            <span className="brand-name">
-              <strong>करियरसेतु <small>CareerSetu</small></strong>
-              <small className="brand-tagline">
-                AI-Powered Learning Platform
-              </small>
-            </span>
-          </a>
+    <main className="cs-auth">
+      <Particles />
 
-          <div className="cohort-badge">
-            <span className="status-dot" />
-            Start building your career
+      <aside className="cs-brand" aria-label="CareerSetu introduction">
+        <Link href="/" className="cs-logo">
+          <span className="cs-logo-mark" aria-hidden="true">
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+            >
+              <path d="M3 17c3-8 15-8 18 0M7 17v-4M12 17V9M17 17v-4M2 17h20" />
+            </svg>
+          </span>
+
+          <span>
+            करियरसेतु
+            <small>CareerSetu</small>
+          </span>
+        </Link>
+
+        <div className="cs-hero">
+          <h1>
+            Build your <span className="cs-grad">bridge</span> to the career
+            you want.
+          </h1>
+
+          <p>
+            Discover personalised learning paths, build real-world skills,
+            and move closer to your dream career.
+          </p>
+        </div>
+
+        <div className="cs-stage" aria-hidden="true">
+          <svg
+            className="cs-bridge"
+            viewBox="0 0 600 230"
+            preserveAspectRatio="none"
+            fill="none"
+          >
+            <defs>
+              <linearGradient id="cs-gradient" x1="0" x2="1">
+                <stop offset="0" stopColor="#8b5cf6" />
+                <stop offset="1" stopColor="#22d3ee" />
+              </linearGradient>
+            </defs>
+
+            <path
+              className="draw"
+              d="M0 200 C150 20 450 20 600 200"
+              stroke="url(#cs-gradient)"
+              strokeWidth="3"
+              strokeLinecap="round"
+            />
+          </svg>
+
+          <div className="cs-chip a">
+            Your goals
+            <b>Start your journey</b>
           </div>
 
-          <h1>Your next opportunity starts here.</h1>
-          <p className="brand-description">
-            Build skills, discover learning paths, and move closer to your
-            career goals with an AI-guided career development platform.
-          </p>
+          <div className="cs-chip b">
+            AI learning roadmap
+            <b>Made for you</b>
+            <div className="bar">
+              <i style={{ width: "80%" }} />
+            </div>
+          </div>
 
-          <div className="progress-card">
-            <div className="progress-heading">
-              <strong>Step 1: Create your account</strong>
-              <span>1 of 2</span>
-            </div>
-            <div className="progress-track" aria-hidden="true">
-              <span />
-            </div>
-            <p>
-              Create your account first. You can complete your learning and
-              career profile in the next step.
+          <div className="cs-chip c">
+            Your next opportunity
+            <b>Keep growing 🚀</b>
+          </div>
+        </div>
+
+        <div className="cs-stats">
+          <span>
+            <b>AI</b>
+            Personalised learning
+          </span>
+          <span>
+            <b>Skills</b>
+            Career readiness
+          </span>
+          <span>
+            <b>Goals</b>
+            Your next step
+          </span>
+        </div>
+      </aside>
+
+      <section className="cs-panel">
+        <div className="cs-card">
+          <div className="cs-card-heading">
+            <span className="cs-eyebrow">YOUR FUTURE STARTS HERE</span>
+            <h2>Create your account</h2>
+            <p className="cs-sub">
+              Join CareerSetu and take the next step in your career.
             </p>
           </div>
 
-          <div className="benefit-list">
-            <Benefit
-              icon="◎"
-              title="Personalized Learning"
-              description="Explore learning paths suited to your goals and skill level."
-            />
-            <Benefit
-              icon="⌘"
-              title="Skill Development"
-              description="Build practical skills through exercises and guided practice."
-            />
-            <Benefit
-              icon="✧"
-              title="Career Readiness"
-              description="Track your progress as you work towards your career goals."
-            />
-          </div>
-        </aside>
-
-        <section className="signup-content">
-          <div className="signup-form-wrap">
-            <header className="form-header">
-              <h2>Create your account</h2>
-              <p>Enter your details to get started with CareerSetu.</p>
-            </header>
-
-            {accountExistsEmail && (
-              <div className="account-exists-alert" role="alert">
-                <span className="account-alert-icon" aria-hidden="true">!</span>
-                <div>
-                  <h3>Account Already Exists</h3>
-                  <p>
-                    An account is already registered with{" "}
-                    <strong>{accountExistsEmail}</strong>.{" "}
-                    <a href="/login">Sign in here</a> or reset your password.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} noValidate>
-              <div className="form-field">
-                <FieldHeading htmlFor="full-name" label="Full name" />
-                <div className={`input-wrap ${errors.fullName ? "has-error" : ""}`}>
-                  <span className="input-icon" aria-hidden="true">♙</span>
-                  <input
-                    id="full-name"
-                    name="fullName"
-                    type="text"
-                    autoComplete="name"
-                    maxLength={100}
-                    placeholder="Enter your full name"
-                    value={formData.fullName}
-                    onChange={(event) => updateField("fullName", event.target.value)}
-                    aria-invalid={!!errors.fullName}
-                  />
-                </div>
-                {errors.fullName && <FieldError>{errors.fullName}</FieldError>}
-              </div>
-
-              <div className="form-field">
-                <FieldHeading
-                  htmlFor="email"
-                  label="Email address"
-                  hint="Institutional email preferred"
-                />
-                <div
-                  className={`input-wrap ${
-                    errors.email || accountExistsEmail ? "has-error" : ""
-                  }`}
-                >
-                  <span className="input-icon" aria-hidden="true">✉</span>
-                  <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    maxLength={254}
-                    placeholder="you@college.edu"
-                    value={formData.email}
-                    onChange={(event) => updateField("email", event.target.value)}
-                    aria-invalid={!!errors.email || !!accountExistsEmail}
-                  />
-                </div>
-                {errors.email && <FieldError>{errors.email}</FieldError>}
-                {accountExistsEmail && (
-                  <p className="field-error">
-                    This email is already registered. Please sign in.
-                  </p>
-                )}
-              </div>
-
-              <div className="form-field">
-                <FieldHeading
-                  htmlFor="password"
-                  label="Password"
-                  hint="At least 8 characters"
-                />
-                <div className={`input-wrap ${errors.password ? "has-error" : ""}`}>
-                  <span className="input-icon" aria-hidden="true">♙</span>
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    autoComplete="new-password"
-                    placeholder="Create a strong password"
-                    value={formData.password}
-                    onChange={(event) => updateField("password", event.target.value)}
-                    aria-invalid={!!errors.password}
-                  />
-                  <button
-                    className="visibility-button"
-                    type="button"
-                    onClick={() => setShowPassword((visible) => !visible)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                    aria-pressed={showPassword}
-                  >
-                    <PasswordVisibilityIcon isVisible={showPassword} />
-                  </button>
-                </div>
-
-                <div className="password-panel">
-                  <div className="strength-heading">
-                    <span>Password strength</span>
-                    <strong className={`strength-${passwordStrength.toLowerCase().replace(" ", "-")}`}>
-                      {passwordStrength}
-                    </strong>
-                  </div>
-
-                  <div className="strength-bars" aria-hidden="true">
-                    {PASSWORD_CHECKS.map((check, index) => (
-                      <span
-                        key={check.key}
-                        className={
-                          formData.password && index < completedRequirementCount
-                            ? `filled strength-level-${completedRequirementCount}`
-                            : ""
-                        }
-                      />
-                    ))}
-                  </div>
-
-                  <p className="password-hint">
-                    Use uppercase letters, numbers, and special symbols.
-                  </p>
-
-                  <div className="requirements-grid">
-                    {PASSWORD_CHECKS.map(({ key, label }) => {
-                      const isComplete = passwordRequirements[key];
-                      return (
-                        <div
-                          key={key}
-                          className={`requirement ${isComplete ? "requirement-met" : ""}`}
-                        >
-                          <span className="requirement-circle" aria-hidden="true">
-                            {isComplete ? "✓" : ""}
-                          </span>
-                          <span>{label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                {errors.password && <FieldError>{errors.password}</FieldError>}
-              </div>
-
-              <div className="form-field">
-                <FieldHeading
-                  htmlFor="confirm-password"
-                  label="Confirm password"
-                  hint={
-                    formData.confirmPassword
-                      ? passwordsMatch ? "Passwords match" : "Passwords do not match"
-                      : undefined
-                  }
-                  hintClassName={
-                    formData.confirmPassword
-                      ? passwordsMatch ? "match-text" : "mismatch-text"
-                      : ""
-                  }
-                />
-                <div
-                  className={`input-wrap ${
-                    errors.confirmPassword ? "has-error" : ""
-                  }`}
-                >
-                  <span className="input-icon" aria-hidden="true">↻</span>
-                  <input
-                    id="confirm-password"
-                    name="confirmPassword"
-                    type={showConfirmPassword ? "text" : "password"}
-                    autoComplete="new-password"
-                    placeholder="Re-enter your password"
-                    value={formData.confirmPassword}
-                    onChange={(event) =>
-                      updateField("confirmPassword", event.target.value)
-                    }
-                    aria-invalid={!!errors.confirmPassword}
-                  />
-                  <button
-                    className="visibility-button"
-                    type="button"
-                    onClick={() =>
-                      setShowConfirmPassword((visible) => !visible)
-                    }
-                    aria-label={
-                      showConfirmPassword
-                        ? "Hide confirmation password"
-                        : "Show confirmation password"
-                    }
-                    aria-pressed={showConfirmPassword}
-                  >
-                    <PasswordVisibilityIcon isVisible={showConfirmPassword} />
-                  </button>
-                </div>
-                {errors.confirmPassword && (
-                  <FieldError>{errors.confirmPassword}</FieldError>
-                )}
-              </div>
-
-              <div className="terms-row">
+          <form className="cs-form" onSubmit={onSubmit} noValidate>
+            <div className="cs-field">
+              <label htmlFor="fullName">Full name</label>
+              <div className="cs-input-wrap">
                 <input
-                  id="terms"
-                  name="acceptedTerms"
+                  id="fullName"
+                  className="cs-input"
+                  type="text"
+                  autoComplete="name"
+                  placeholder="Enter your full name"
+                  value={formData.fullName}
+                  onChange={(event) =>
+                    updateField("fullName", event.target.value)
+                  }
+                  aria-invalid={!!errors.fullName}
+                  aria-describedby={
+                    errors.fullName ? "fullName-error" : undefined
+                  }
+                  required
+                />
+              </div>
+
+              {errors.fullName && (
+                <p id="fullName-error" className="cs-err" role="alert">
+                  {errors.fullName}
+                </p>
+              )}
+            </div>
+
+            <div className="cs-field">
+              <label htmlFor="email">Email address</label>
+              <div className="cs-input-wrap">
+                <input
+                  id="email"
+                  className="cs-input"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  value={formData.email}
+                  onChange={(event) =>
+                    updateField("email", event.target.value)
+                  }
+                  aria-invalid={!!errors.email}
+                  aria-describedby={errors.email ? "email-error" : undefined}
+                  required
+                />
+              </div>
+
+              {errors.email && (
+                <p id="email-error" className="cs-err" role="alert">
+                  {errors.email}
+                </p>
+              )}
+            </div>
+
+            <div className="cs-field">
+              <label htmlFor="password">Password</label>
+              <div className="cs-input-wrap">
+                <input
+                  id="password"
+                  className="cs-input"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  placeholder="Create a strong password"
+                  value={formData.password}
+                  onChange={(event) =>
+                    updateField("password", event.target.value)
+                  }
+                  aria-invalid={!!errors.password}
+                  aria-describedby="pw-strength password-error"
+                  required
+                />
+
+                <button
+                  type="button"
+                  className="cs-eye"
+                  onClick={() => setShowPassword((current) => !current)}
+                  aria-label={
+                    showPassword ? "Hide passwords" : "Show passwords"
+                  }
+                  aria-pressed={showPassword}
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+
+              <div className="cs-meter" aria-hidden="true">
+                {[1, 2, 3, 4].map((level) => (
+                  <i
+                    key={level}
+                    className={
+                      formData.password && strength >= level
+                        ? `on-${strength}`
+                        : ""
+                    }
+                  />
+                ))}
+              </div>
+
+              <p
+                id="pw-strength"
+                className="cs-meter-label"
+                aria-live="polite"
+              >
+                {formData.password
+                  ? `Strength: ${STRENGTH_LABELS[strength]}`
+                  : "Use 8+ characters, uppercase, a number and a symbol."}
+              </p>
+
+              {errors.password && (
+                <p id="password-error" className="cs-err" role="alert">
+                  {errors.password}
+                </p>
+              )}
+            </div>
+
+            <div className="cs-field">
+              <label htmlFor="confirmPassword">Confirm password</label>
+              <div className="cs-input-wrap">
+                <input
+                  id="confirmPassword"
+                  className="cs-input"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  placeholder="Enter your password again"
+                  value={formData.confirmPassword}
+                  onChange={(event) =>
+                    updateField("confirmPassword", event.target.value)
+                  }
+                  aria-invalid={!!errors.confirmPassword}
+                  aria-describedby={
+                    errors.confirmPassword ? "confirm-error" : undefined
+                  }
+                  required
+                />
+              </div>
+
+              {errors.confirmPassword && (
+                <p id="confirm-error" className="cs-err" role="alert">
+                  {errors.confirmPassword}
+                </p>
+              )}
+            </div>
+
+            <div className="cs-terms">
+              <label className="cs-check">
+                <input
                   type="checkbox"
                   checked={formData.acceptedTerms}
                   onChange={(event) =>
                     updateField("acceptedTerms", event.target.checked)
                   }
                   aria-invalid={!!errors.acceptedTerms}
+                  required
                 />
-                <label htmlFor="terms">
-                  I agree to the CareerSetu <a href="/terms">Terms of Service</a>{" "}
-                  and acknowledge the <a href="/privacy">Privacy Policy</a>.
-                </label>
-              </div>
+
+                <span>
+                  I agree to the{" "}
+                  <Link href="/terms" className="cs-link">
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="/privacy" className="cs-link">
+                    Privacy Policy
+                  </Link>
+                  .
+                </span>
+              </label>
+
               {errors.acceptedTerms && (
-                <FieldError>{errors.acceptedTerms}</FieldError>
-              )}
-
-              <button
-                className="submit-button"
-                type="submit"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <span className="loading-spinner" aria-hidden="true" />
-                    Creating account...
-                  </>
-                ) : (
-                  <>
-                    Create account <span aria-hidden="true">→</span>
-                  </>
-                )}
-              </button>
-
-              {formMessage && (
-                <p
-                  className={`form-message ${
-                    messageType === "success" ? "form-message-success" : ""
-                  }`}
-                  role="status"
-                >
-                  {formMessage}
+                <p className="cs-err" role="alert">
+                  {errors.acceptedTerms}
                 </p>
               )}
+            </div>
 
-              <p className="signin-row">
-                Already have an account? <a href="/login">Sign in</a>
-              </p>
-            </form>
-
-            <footer className="form-footer">
-              <span>CareerSetu account access</span>
-              <div>
-                <a href="/support">Need help?</a>
-                <a href="/accessibility">Accessibility</a>
+            {feedback && (
+              <div
+                className={`cs-alert ${feedback.type}`}
+                role={feedback.type === "error" ? "alert" : "status"}
+              >
+                {feedback.text}
               </div>
-            </footer>
-          </div>
-        </section>
+            )}
+
+            <button className="cs-btn" type="submit" disabled={loading}>
+              {loading && (
+                <span className="cs-spin" aria-hidden="true" />
+              )}
+              {loading ? "Creating account…" : "Create your account"}
+              {!loading && <span aria-hidden="true"> →</span>}
+            </button>
+
+            <p className="cs-switch">
+              Already have an account?{" "}
+              <Link href="/login" className="cs-link">
+                Sign in
+              </Link>
+            </p>
+          </form>
+        </div>
       </section>
     </main>
-  );
-}
-
-function FieldHeading({
-  htmlFor,
-  label,
-  hint,
-  hintClassName = "",
-}: {
-  htmlFor: string;
-  label: string;
-  hint?: string;
-  hintClassName?: string;
-}) {
-  return (
-    <div className="field-heading">
-      <label htmlFor={htmlFor}>
-        {label} <span className="required-mark">*</span>
-      </label>
-      {hint && <span className={hintClassName}>{hint}</span>}
-    </div>
-  );
-}
-
-function FieldError({ children }: { children: ReactNode }) {
-  return <p className="field-error" role="alert">{children}</p>;
-}
-
-function Benefit({
-  icon,
-  title,
-  description,
-}: {
-  icon: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <article className="benefit-card">
-      <span className="benefit-icon" aria-hidden="true">{icon}</span>
-      <div>
-        <h3>{title}</h3>
-        <p>{description}</p>
-      </div>
-    </article>
   );
 }

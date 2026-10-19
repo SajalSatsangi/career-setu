@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, type FormEvent } from "react";
@@ -67,6 +66,29 @@ function ArrowIcon() {
   );
 }
 
+function Particles() {
+  return (
+    <div className="cs-particles" aria-hidden="true">
+      {Array.from({ length: 28 }, (_, index) => {
+        const size = 2 + ((index * 7) % 4);
+
+        return (
+          <span
+            key={index}
+            style={{
+              left: `${(index * 37) % 100}%`,
+              width: size,
+              height: size,
+              animationDuration: `${14 + ((index * 5) % 14)}s`,
+              animationDelay: `-${(index * 3) % 20}s`,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -103,39 +125,55 @@ export default function LoginPage() {
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
+
     setHasSubmitted(true);
     setFormMessage("");
     setMessageType("");
 
+    // Step 1: Validate the login form
     const validationErrors = validateLoginForm(formData);
     setFormErrors(validationErrors);
 
+    // Stop if validation fails
     if (Object.keys(validationErrors).length > 0) {
       return;
     }
 
+    // Step 2: Show the loading state
     setIsSubmitting(true);
 
     try {
-      await authenticateUser(formData);
+      // Step 3: Authenticate the user
+      const auth = await authenticateUser(formData);
+
+      // Temporary client-side session for frontend integration.
+      sessionStorage.setItem("careerSetuAccessToken", auth.accessToken);
+      sessionStorage.setItem("careerSetuUser", JSON.stringify(auth.user));
+
       router.replace("/dashboard");
     } catch (error: unknown) {
+      // Step 5: Display the appropriate error message
       if (error instanceof LoginError) {
         setFormMessage(error.message);
+
         setMessageType(
           error.code === "SESSION_EXPIRED" ? "info" : "error"
         );
       } else {
-        setFormMessage("Unable to sign in right now. Please try again.");
+        setFormMessage(
+          "Unable to sign in right now. Please try again."
+        );
         setMessageType("error");
       }
     } finally {
+      // Step 6: Always stop the loading state
       setIsSubmitting(false);
     }
   }
 
   return (
     <main className="login-page">
+      <Particles />
       <section className="login-brand-panel">
         <header className="login-brand-header">
           <Link href="/" className="login-brand" aria-label="CareerSetu home">
@@ -215,11 +253,10 @@ export default function LoginPage() {
 
           {formMessage && (
             <div
-              className={`login-alert ${
-                messageType === "info"
-                  ? "login-alert-info"
-                  : "login-alert-error"
-              }`}
+              className={`login-alert ${messageType === "info"
+                ? "login-alert-info"
+                : "login-alert-error"
+                }`}
               role="alert"
             >
               <span className="login-alert-icon" aria-hidden="true">
