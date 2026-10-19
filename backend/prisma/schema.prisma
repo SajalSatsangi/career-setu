@@ -11,7 +11,20 @@ datasource db {
 
 enum UserRole {
   STUDENT
+  RECRUITER
   ADMIN
+}
+
+enum JobStatus {
+  OPEN
+  CLOSED
+}
+
+enum ApplicationStatus {
+  APPLIED
+  SHORTLISTED
+  REJECTED
+  HIRED
 }
 
 enum SkillProficiency {
@@ -32,9 +45,89 @@ model User {
 
   education Education[]
   skills    UserSkill[]
+  enrollments CourseEnrollment[]
+  postedJobs Job[]
+  applications JobApplication[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([role])
   @@map("users")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model Course {
+  id          String   @id @default(uuid())
+  title       String   @db.VarChar(160)
+  description String   @db.Text
+  category    String   @db.VarChar(80)
+  level       String   @db.VarChar(30)
+  published   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  enrollments CourseEnrollment[]
+  activities  CourseActivity[]
+
+  @@index([published, category])
+  @@map("courses")
+}
+
+model CourseEnrollment {
+  id        String   @id @default(uuid())
+  courseId  String
+  userId    String
+  progress  Int      @default(0)
+  enrolledAt DateTime @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  completions CourseActivityCompletion[]
+
+  @@unique([courseId, userId])
+  @@index([userId])
+  @@map("course_enrollments")
+}
+
+model CourseActivity {
+  id          String   @id @default(uuid())
+  courseId    String
+  title       String   @db.VarChar(160)
+  description String   @db.Text
+  position    Int
+  createdAt   DateTime @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  completions CourseActivityCompletion[]
+
+  @@unique([courseId, position])
+  @@index([courseId])
+  @@map("course_activities")
+}
+
+model CourseActivityCompletion {
+  id           String   @id @default(uuid())
+  enrollmentId String
+  activityId   String
+  completedAt  DateTime @default(now())
+
+  enrollment CourseEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  activity   CourseActivity   @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@unique([enrollmentId, activityId])
+  @@map("course_activity_completions")
 }
 
 model Education {
@@ -68,4 +161,41 @@ model UserSkill {
   @@unique([userId, name])
   @@index([userId])
   @@map("user_skills")
+}
+
+model Job {
+  id             String    @id @default(uuid())
+  recruiterId    String
+  companyName    String    @db.VarChar(160)
+  title          String    @db.VarChar(160)
+  description    String    @db.Text
+  location       String    @db.VarChar(120)
+  employmentType String    @db.VarChar(40)
+  requiredSkills String[]
+  status         JobStatus @default(OPEN)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  recruiter   User            @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+  applications JobApplication[]
+
+  @@index([status, createdAt])
+  @@index([recruiterId])
+  @@map("jobs")
+}
+
+model JobApplication {
+  id          String            @id @default(uuid())
+  jobId       String
+  studentId   String
+  status      ApplicationStatus @default(APPLIED)
+  appliedAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  job     Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, studentId])
+  @@index([studentId, status])
+  @@map("job_applications")
 }

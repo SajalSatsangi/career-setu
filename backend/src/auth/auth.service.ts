@@ -5,10 +5,13 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { createHash, randomBytes } from 'crypto';
 import { UserRole } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 
 @Injectable()
@@ -87,6 +90,46 @@ export class AuthService {
       user.email,
       user.role,
     );
+  }
+
+  async requestPasswordReset(dto: ForgotPasswordDto) {
+    const genericMessage = 'If an account exists for this email, password reset instructions will be sent.';
+    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (!user) return { message: genericMessage };
+
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await this.prisma.passwordResetToken.deleteMany({ where: { userId: user.id } });
+    await this.prisma.passwordResetToken.create({
+      data: { userId: user.id, tokenHash, expiresAt },
+    });
+
+    if (process.env.NODE_ENV !== 'production') {
+      return { message: genericMessage, developmentToken: rawToken };
+    }
+
+    return { message: genericMessage };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const tokenHash = createHash('sha256').update(dto.token).digest('hex');
+    const tokenRecord = await this.prisma.passwordResetToken.findUnique({
+      where: { tokenHash },
+    });
+
+    if (!tokenRecord || tokenRecord.usedAt || tokenRecord.expiresAt <= new Date()) {
+      throw new UnauthorizedException('This password reset link is invalid or expired');
+    }
+
+    const passwordHash = await this.hashPassword(dto.password);
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: tokenRecord.userId }, data: { passwordHash } }),
+      this.prisma.passwordResetToken.update({ where: { id: tokenRecord.id }, data: { usedAt: new Date() } }),
+    ]);
+
+    return { message: 'Password reset successful. You can now sign in.' };
   }
 
   async getCurrentUser(userId: string) {
