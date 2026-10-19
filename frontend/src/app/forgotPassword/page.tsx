@@ -68,6 +68,7 @@ export default function ForgotPasswordPage() {
   const [messageType, setMessageType] = useState<
     "success" | "error" | ""
   >("");
+  const [developmentToken, setDevelopmentToken] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   function validateEmailAddress(): boolean {
@@ -96,6 +97,7 @@ export default function ForgotPasswordPage() {
     event.preventDefault();
     setFormMessage("");
     setMessageType("");
+    setDevelopmentToken("");
 
     if (!validateEmailAddress()) {
       return;
@@ -111,6 +113,7 @@ export default function ForgotPasswordPage() {
           "If an account exists for this email, password reset instructions will be sent."
       );
       setMessageType("success");
+      setDevelopmentToken(response.developmentToken ?? "");
     } catch (error: unknown) {
       setFormMessage(
         error instanceof ForgotPasswordError
@@ -238,6 +241,13 @@ export default function ForgotPasswordPage() {
                   : "Unable to process request"}
               </strong>
               <p>{formMessage}</p>
+            </div>
+          )}
+
+          {developmentToken && (
+            <div className="forgot-dev-reset" role="status">
+              <strong>Development reset link</strong>
+              <Link href={`/reset-password?token=${developmentToken}`}>Continue to set a new password</Link>
             </div>
           )}
 

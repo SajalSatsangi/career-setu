@@ -25,7 +25,10 @@ const config: Config = {
   transform: {
     '^.+\\.(t|j)s$': ['@swc/jest'],
   },
-  moduleNameMapper,
+  moduleNameMapper: {
+    ...moduleNameMapper,
+    '^(.{1,2}/.*)\\.js$': '$1',
+  },
   collectCoverageFrom: [
     'src/**/*.(t|j)s',
     'libs/**/*.(t|j)s',

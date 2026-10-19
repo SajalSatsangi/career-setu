@@ -16,6 +16,7 @@ export class ForgotPasswordError extends Error {
 
 interface ForgotPasswordApiResponse {
   message?: string;
+  developmentToken?: string;
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -79,4 +80,34 @@ export async function requestPasswordReset(
       "Something went wrong. Please try again.",
     "SERVER_ERROR"
   );
+}
+
+export async function resetPassword(
+  token: string,
+  password: string,
+): Promise<ForgotPasswordApiResponse> {
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password }),
+    });
+  } catch {
+    throw new ForgotPasswordError(
+      "Unable to connect to the server. Check your connection and try again.",
+      "REQUEST_UNAVAILABLE",
+    );
+  }
+
+  const responseBody = await response.json().catch(() => null) as ForgotPasswordApiResponse | null;
+  if (!response.ok) {
+    throw new ForgotPasswordError(
+      responseBody?.message ?? "This password reset link is invalid or expired.",
+      response.status === 400 ? "VALIDATION_ERROR" : "SERVER_ERROR",
+    );
+  }
+
+  return responseBody ?? { message: "Password reset successful. You can now sign in." };
 }

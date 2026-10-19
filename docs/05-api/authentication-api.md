@@ -122,6 +122,41 @@ Successful response: HTTP `201 Created`.
 
 This is a stateless logout operation. The server does not revoke an issued JWT, so a token remains usable until it expires. The client must discard the token. Server-side revocation or refresh-token rotation can be introduced in a future authentication enhancement.
 
+### 3.5 Request a password reset
+
+**POST `/auth/forgot-password`**
+
+Authentication: Not required.
+
+Request:
+
+```json
+{
+  "email": "aarav@example.com"
+}
+```
+
+The endpoint returns the same generic message whether or not the email exists. For local development only, the response also includes `developmentToken`; production responses never include the raw token. The intended production delivery integration is email or another trusted notification provider.
+
+Reset tokens are stored only as SHA-256 hashes, expire after 15 minutes, and invalidate previous tokens for the same user.
+
+### 3.6 Reset the password
+
+**POST `/auth/reset-password`**
+
+Authentication: Not required.
+
+Request:
+
+```json
+{
+  "token": "<reset-token>",
+  "password": "NewStrongPass123"
+}
+```
+
+The token is single-use. Invalid, expired, or already-used tokens return `401 Unauthorized`. A successful reset hashes the new password and marks the token as used in one transaction.
+
 ## 4. Security considerations
 
 - Passwords are hashed using bcrypt with a work factor of 12 before storage.
@@ -130,7 +165,7 @@ This is a stateless logout operation. The server does not revoke an issued JWT, 
 - Protected routes extract bearer tokens from the `Authorization` header.
 - Token expiration is enforced during JWT validation.
 - Global request validation rejects unexpected fields.
-- The role guard and role decorator are available for future role-protected endpoints.
+- Recruiter and administrator operations use the role guard and role decorator for server-side authorization.
 - Production deployments must use a strong secret supplied through secure environment configuration and HTTPS.
 
 ## 5. Testing
@@ -146,7 +181,7 @@ The E2E tests cover:
 - Current-user retrieval with missing, invalid, and expired tokens.
 - Rejection of unexpected request properties.
 
-The backend test suites have been verified with **23 unit tests and 33 E2E tests passing**. The E2E suite uses a mocked Prisma service; these results do not establish that database-backed integration tests against PostgreSQL have passed.
+The backend unit suite is verified locally; database-backed integration testing still requires applying migrations and running PostgreSQL.
 
 Run the backend checks from the `backend` directory:
 

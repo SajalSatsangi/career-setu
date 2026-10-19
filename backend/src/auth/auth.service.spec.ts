@@ -13,7 +13,15 @@ describe('AuthService', () => {
     user: {
       findUnique: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     },
+    passwordResetToken: {
+      deleteMany: jest.fn(),
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
+    $transaction: jest.fn(),
   };
 
   const jwtMock = {
@@ -343,6 +351,48 @@ describe('AuthService', () => {
       expect(
         jwtMock.signAsync,
       ).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('password reset', () => {
+    it('does not reveal whether an email exists', async () => {
+      prismaMock.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.requestPasswordReset({ email: 'unknown@example.com' }),
+      ).resolves.toEqual({
+        message: 'If an account exists for this email, password reset instructions will be sent.',
+      });
+      expect(prismaMock.passwordResetToken.create).not.toHaveBeenCalled();
+    });
+
+    it('creates a development reset token for an existing user', async () => {
+      prismaMock.user.findUnique.mockResolvedValue({ id: 'user-1' });
+
+      const response = await service.requestPasswordReset({
+        email: 'user@example.com',
+      });
+
+      expect(response.developmentToken).toEqual(expect.any(String));
+      expect(response.developmentToken).toHaveLength(64);
+      expect(prismaMock.passwordResetToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+      });
+      expect(prismaMock.passwordResetToken.create).toHaveBeenCalledWith({
+        data: {
+          userId: 'user-1',
+          tokenHash: expect.any(String),
+          expiresAt: expect.any(Date),
+        },
+      });
+    });
+
+    it('rejects an invalid reset token', async () => {
+      prismaMock.passwordResetToken.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.resetPassword({ token: 'a'.repeat(64), password: 'NewPassword123' }),
+      ).rejects.toThrow('invalid or expired');
     });
   });
 
