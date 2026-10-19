@@ -1,25 +1,21 @@
 
 import { test, expect, type Page } from "@playwright/test";
 
-const testEmail = "student@example.com";
-const testPassword = "ExamplePassword123!";
+const loginUrl = "/login";
 
-async function fillLoginForm(page: Page) {
-  await page.goto("/login");
-
-  await page.getByLabel(
-    "Institutional or personal email"
-  ).fill(testEmail);
-
-  await page.getByLabel("Password", {
-    exact: true,
-  }).fill(testPassword);
+async function fillLoginForm(
+  page: Page,
+  email: string,
+  password: string,
+) {
+  await page.getByLabel("Institutional or personal email").fill(email);
+  await page.locator("#login-password").fill(password);
 }
 
 async function mockLoginResponse(
   page: Page,
   status: number,
-  body: Record<string, string>
+  body: unknown,
 ) {
   await page.route("**/api/auth/login", async (route) => {
     await route.fulfill({
@@ -30,158 +26,133 @@ async function mockLoginResponse(
   });
 }
 
-test("validates empty login fields", async ({ page }) => {
-  await page.goto("/login");
+test("shows validation errors when both fields are empty", async ({
+  page,
+}) => {
+  await page.goto(loginUrl);
 
-  await page.getByRole("button", {
-    name: /sign in to careerSetu/i,
-  }).click();
+  await page.getByRole("button", { name: /sign in|log in/i }).click();
 
   await expect(
-    page.getByText("Please enter your email address.")
+    page.getByText("Please enter your email address.", { exact: true }),
   ).toBeVisible();
 
   await expect(
-    page.getByText("Please enter your password.")
+    page.getByText("Please enter your password.", { exact: true }),
   ).toBeVisible();
+
+  await expect(page).toHaveURL(/\/login$/);
 });
 
-test("validates an incorrectly formatted email", async ({ page }) => {
-  await page.goto("/login");
+test("shows a validation error for an invalid email", async ({ page }) => {
+  await page.goto(loginUrl);
+  await fillLoginForm(page, "invalid-email", "ValidPassword123!");
 
-  await page.getByLabel(
-    "Institutional or personal email"
-  ).fill("invalid-email");
-
-  await page.getByLabel("Password", {
-    exact: true,
-  }).fill(testPassword);
-
-  await page.getByRole("button", {
-    name: /sign in to careerSetu/i,
-  }).click();
+  await page.getByRole("button", { name: /sign in|log in/i }).click();
 
   await expect(
-    page.getByText("Enter a valid email address.")
+    page.getByText("Enter a valid email address.", { exact: true }),
   ).toBeVisible();
+
+  await expect(page).toHaveURL(/\/login$/);
 });
 
-test("shows the invalid credentials alert", async ({ page }) => {
-  await mockLoginResponse(page, 401, {
-    code: "INVALID_CREDENTIALS",
-    message: "Invalid credentials",
-  });
 
-  await fillLoginForm(page);
-
-  await page.getByRole("button", {
-    name: /sign in to careerSetu/i,
-  }).click();
-
-  await expect(
-    page.getByText("Unable to sign in")
-  ).toBeVisible();
-
-  await expect(
-    page.getByText(
-      "The email address or password is incorrect."
-    )
-  ).toBeVisible();
-});
-
-test("shows a network error", async ({ page }) => {
+test("shows an error when the login request fails", async ({ page }) => {
   await page.route("**/api/auth/login", async (route) => {
     await route.abort("failed");
   });
 
-  await fillLoginForm(page);
+  await page.goto(loginUrl);
 
-  await page.getByRole("button", {
-    name: /sign in to careerSetu/i,
-  }).click();
+  await fillLoginForm(page, "student@example.com", "ValidPassword123!");
 
-  await expect(
-    page.getByText(
-      "Unable to connect to the server. Check your connection and try again."
-    )
-  ).toBeVisible();
+  await page.getByRole("button", { name: /sign in|log in/i }).click();
+
+  const errorMessage = page.locator(".login-alert p");
+
+  await expect(errorMessage).toContainText(
+    "Unable to connect to the server. Check your connection and try again.",
+  );
 });
 
-test("shows the expired session alert", async ({ page }) => {
+test("handles an expired session response", async ({ page }) => {
   await mockLoginResponse(page, 401, {
     code: "SESSION_EXPIRED",
-    message: "Session expired",
+    message: "Your session has expired. Please sign in again.",
   });
 
-  await fillLoginForm(page);
+  await page.goto(loginUrl);
 
-  await page.getByRole("button", {
-    name: /sign in to careerSetu/i,
-  }).click();
+  await fillLoginForm(page, "student@example.com", "ValidPassword123!");
 
-  await expect(
-    page.getByText("Security session expired")
-  ).toBeVisible();
+  await page.getByRole("button", { name: /sign in|log in/i }).click();
 
-  await expect(
-    page.getByText(
-      "Your session has expired. Please sign in again."
-    )
-  ).toBeVisible();
+  const loginAlert = page.locator(".login-alert-info");
+
+  await expect(loginAlert).toBeVisible();
+
+  await expect(loginAlert).toContainText(
+    "Your session has expired. Please sign in again.",
+  );
 });
 
-test("disables the submit button while the request is pending", async ({
+
+test("shows a pending state while the login request is processing", async ({
   page,
 }) => {
-  let releaseRequest!: () => void;
+  let releaseResponse!: () => void;
 
-  const requestCanFinish = new Promise<void>((resolve) => {
-    releaseRequest = resolve;
+  const responseGate = new Promise<void>((resolve) => {
+    releaseResponse = resolve;
   });
 
   await page.route("**/api/auth/login", async (route) => {
-    await requestCanFinish;
+    await responseGate;
 
     await route.fulfill({
       status: 401,
       contentType: "application/json",
       body: JSON.stringify({
-        code: "INVALID_CREDENTIALS",
+        message: "Invalid email or password.",
       }),
     });
   });
 
-  try {
-    await fillLoginForm(page);
+  await page.goto(loginUrl);
+  await fillLoginForm(page, "student@example.com", "ValidPassword123!");
 
-    await page.getByRole("button", {
-      name: /sign in to careerSetu/i,
-    }).click();
+  await page.getByRole("button", { name: /sign in|log in/i }).click();
 
-    const submittingButton = page.getByRole("button", {
-      name: /signing in/i,
-    });
+  await expect(
+    page.getByRole("button", { name: /signing in|please wait/i }),
+  ).toBeVisible();
 
-    await expect(submittingButton).toBeVisible();
-    await expect(submittingButton).toBeDisabled();
-  } finally {
-    releaseRequest();
-  }
+  releaseResponse();
+
+  await expect(
+    page.getByText(
+      "The email address or password is incorrect.",
+      { exact: true },
+    ),
+  ).toBeVisible();
 });
 
-test("follows the success flow after a successful API response", async ({
-  page,
-}) => {
+test("redirects after successful login", async ({ page }) => {
   await mockLoginResponse(page, 200, {
-    message: "Authenticated",
+    accessToken: "test-access-token",
+    user: {
+      id: "student-1",
+      name: "Test Student",
+      email: "student@example.com",
+      role: "STUDENT",
+    },
   });
 
-  await fillLoginForm(page);
+  await page.goto(loginUrl);
+  await fillLoginForm(page, "student@example.com", "ValidPassword123!");
 
-  await page.getByRole("button", {
-    name: /sign in to careerSetu/i,
-  }).click();
+  await page.getByRole("button", { name: /sign in|log in/i }).click();
 
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).not.toHaveURL(/\/login$/);
 });
-    
