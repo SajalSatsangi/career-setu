@@ -7,6 +7,7 @@ import {
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UserRole } from '../generated/prisma/client';
 
 const profileSelect = {
   id: true,
@@ -55,6 +56,32 @@ export class UsersService {
         throw new NotFoundException('User profile not found');
       }
 
+      throw error;
+    }
+  }
+
+  listAllUsers() {
+    return this.prisma.user.findMany({
+      select: profileSelect,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async updateUserRole(adminId: string, userId: string, role: UserRole) {
+    if (adminId === userId) {
+      throw new BadRequestException('Administrators cannot change their own role');
+    }
+
+    try {
+      return await this.prisma.user.update({
+        where: { id: userId },
+        data: { role },
+        select: profileSelect,
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new NotFoundException('User not found');
+      }
       throw error;
     }
   }

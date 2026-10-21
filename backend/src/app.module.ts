@@ -8,6 +8,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
 import { CoursesModule } from './courses/courses.module';
 import { JobsModule } from './jobs/jobs.module';
+import { MentoringModule } from './mentoring/mentoring.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 export const {
   ObserveModule,
@@ -31,6 +33,8 @@ export const {
     UsersModule,
     CoursesModule,
     JobsModule,
+    MentoringModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

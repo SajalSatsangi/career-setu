@@ -27,6 +27,13 @@ export class CoursesController {
     return this.coursesService.listMyEnrollments(request.user.id);
   }
 
+  @Get('admin/all')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  listAll() {
+    return this.coursesService.list(false);
+  }
+
   @Post()
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
