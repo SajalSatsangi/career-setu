@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { JobsService } from './jobs.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 describe('JobsService', () => {
   let service: JobsService;
@@ -37,7 +38,11 @@ describe('JobsService', () => {
   beforeEach(async () => {
     jest.resetAllMocks();
     const module: TestingModule = await Test.createTestingModule({
-      providers: [JobsService, { provide: PrismaService, useValue: prismaMock }],
+      providers: [
+        JobsService,
+        { provide: PrismaService, useValue: prismaMock },
+        { provide: NotificationsService, useValue: { create: jest.fn() } },
+      ],
     }).compile();
     service = module.get(JobsService);
   });

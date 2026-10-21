@@ -40,6 +40,21 @@ import {
   type RecruiterApplication,
   type RecruiterJob,
 } from "@/lib/api/jobs";
+import {
+  fetchMentors,
+  fetchMyMentorshipRequests,
+  MentoringError,
+  requestMentorship,
+  type MentorProfile,
+  type MentorshipRequest,
+} from "@/lib/api/mentoring";
+import {
+  fetchNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  NotificationsError,
+  type NotificationRecord,
+} from "@/lib/api/notifications";
 import "./dashboard.css";
 
 function getInitials(name: string) {
@@ -85,6 +100,12 @@ export default function DashboardPage() {
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [isJobsLoading, setIsJobsLoading] = useState(true);
   const [jobsMessage, setJobsMessage] = useState("");
+  const [mentors, setMentors] = useState<MentorProfile[]>([]);
+  const [mentorshipRequests, setMentorshipRequests] = useState<MentorshipRequest[]>([]);
+  const [isMentoringLoading, setIsMentoringLoading] = useState(true);
+  const [mentoringMessage, setMentoringMessage] = useState("");
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
+  const [notificationsMessage, setNotificationsMessage] = useState("");
   const [recruiterJobs, setRecruiterJobs] = useState<RecruiterJob[]>([]);
   const [recruiterApplications, setRecruiterApplications] = useState<Record<string, RecruiterApplication[]>>({});
 
@@ -135,6 +156,27 @@ export default function DashboardPage() {
         setCoursesMessage(error instanceof CoursesError ? error.message : "Learning paths are temporarily unavailable.");
       })
       .finally(() => setIsCoursesLoading(false));
+  }, [user]);
+
+  useEffect(() => {
+    const accessToken = sessionStorage.getItem("careerSetuAccessToken");
+    if (!accessToken || !user) return;
+    fetchNotifications(accessToken)
+      .then(setNotifications)
+      .catch((error: unknown) => setNotificationsMessage(error instanceof NotificationsError ? error.message : "Notifications are temporarily unavailable."));
+  }, [user]);
+
+  useEffect(() => {
+    const accessToken = sessionStorage.getItem("careerSetuAccessToken");
+    if (!accessToken || !user || user.role !== "STUDENT") return;
+
+    Promise.all([fetchMentors(accessToken), fetchMyMentorshipRequests(accessToken)])
+      .then(([mentorRecords, requestRecords]) => {
+        setMentors(mentorRecords);
+        setMentorshipRequests(requestRecords);
+      })
+      .catch((error: unknown) => setMentoringMessage(error instanceof MentoringError ? error.message : "Mentoring is temporarily unavailable."))
+      .finally(() => setIsMentoringLoading(false));
   }, [user]);
 
   useEffect(() => {
@@ -302,6 +344,40 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleMentorshipRequest(mentorId: string) {
+    const accessToken = sessionStorage.getItem("careerSetuAccessToken");
+    if (!accessToken) return;
+    try {
+      const request = await requestMentorship(accessToken, mentorId);
+      setMentorshipRequests((records) => [...records, request]);
+      setMentoringMessage("Mentorship request sent.");
+    } catch (error: unknown) {
+      setMentoringMessage(error instanceof MentoringError ? error.message : "We could not send the mentorship request.");
+    }
+  }
+
+  async function handleReadNotification(id: string) {
+    const accessToken = sessionStorage.getItem("careerSetuAccessToken");
+    if (!accessToken) return;
+    try {
+      await markNotificationRead(accessToken, id);
+      setNotifications((records) => records.map((record) => record.id === id ? { ...record, readAt: new Date().toISOString() } : record));
+    } catch (error: unknown) {
+      setNotificationsMessage(error instanceof NotificationsError ? error.message : "We could not update notifications.");
+    }
+  }
+
+  async function handleReadAllNotifications() {
+    const accessToken = sessionStorage.getItem("careerSetuAccessToken");
+    if (!accessToken) return;
+    try {
+      await markAllNotificationsRead(accessToken);
+      setNotifications((records) => records.map((record) => ({ ...record, readAt: record.readAt ?? new Date().toISOString() })));
+    } catch (error: unknown) {
+      setNotificationsMessage(error instanceof NotificationsError ? error.message : "We could not update notifications.");
+    }
+  }
+
   async function handleApplicationStatus(jobId: string, applicationId: string, status: JobApplication["status"]) {
     const accessToken = sessionStorage.getItem("careerSetuAccessToken");
     if (!accessToken) return;
@@ -366,6 +442,12 @@ export default function DashboardPage() {
             <p>Keep building the skills and experience that move your career forward.</p>
           </div>
           <div className="dashboard-avatar" aria-hidden="true">{getInitials(user.name)}</div>
+        </section>
+
+        <section className="dashboard-notifications" aria-labelledby="notifications-heading">
+          <div className="dashboard-panel-heading"><div><p className="dashboard-kicker">INBOX</p><h2 id="notifications-heading">Notifications</h2></div><span>{notifications.filter((notification) => !notification.readAt).length} new</span></div>
+          {notifications.length === 0 ? <p className="dashboard-muted">You are all caught up.</p> : <><ul className="dashboard-notification-list">{notifications.slice(0, 5).map((notification) => <li className={notification.readAt ? "dashboard-notification-read" : ""} key={notification.id}><div><strong>{notification.title}</strong><p>{notification.body}</p></div>{notification.readAt ? <span>Read</span> : <button type="button" onClick={() => handleReadNotification(notification.id)}>Mark read</button>}</li>)}</ul><button className="dashboard-read-all" type="button" onClick={handleReadAllNotifications}>Mark all as read</button></>}
+          {notificationsMessage && <p className="dashboard-profile-message" role="status">{notificationsMessage}</p>}
         </section>
 
         <section className="dashboard-grid" aria-label="Career workspace overview">
@@ -495,6 +577,12 @@ export default function DashboardPage() {
             <div className="dashboard-job-list">{jobs.map((job) => { const application = applications.find((record) => record.job.id === job.id); return <article className="dashboard-job" key={job.id}><div><span className="dashboard-course-meta">{job.companyName} · {job.location}</span><h3>{job.title}</h3><p>{job.description}</p><small>{job.employmentType} · {job.requiredSkills.join(" · ")}</small></div>{application ? <span className="dashboard-enrolled dashboard-application-status">{application.status.toLowerCase()}</span> : <button type="button" onClick={() => handleApply(job.id)}>Apply</button>}</article>; })}</div>
           )}
           {jobsMessage && <p className="dashboard-profile-message" role="status">{jobsMessage}</p>}
+        </section>}
+
+        {user.role === "STUDENT" && <section className="dashboard-courses dashboard-mentoring" aria-labelledby="mentoring-heading">
+          <div className="dashboard-panel-heading"><div><p className="dashboard-kicker">GUIDANCE</p><h2 id="mentoring-heading">Find a mentor</h2></div><span>{mentorshipRequests.length} requests</span></div>
+          {isMentoringLoading ? <p className="dashboard-muted">Loading mentors...</p> : mentors.length === 0 ? <p className="dashboard-muted">No mentors are available yet.</p> : <div className="dashboard-mentor-list">{mentors.map((mentor) => { const request = mentorshipRequests.find((item) => item.mentor.id === mentor.userId); return <article className="dashboard-mentor" key={mentor.id}><div><span className="dashboard-course-meta">{mentor.expertise.join(" · ")}</span><h3>{mentor.user.name}</h3><p>{mentor.bio}</p><small>Available: {mentor.availability}</small></div>{request ? <span className="dashboard-enrolled dashboard-application-status">{request.status.toLowerCase()}</span> : <button type="button" onClick={() => handleMentorshipRequest(mentor.userId)}>Request mentor</button>}</article>; })}</div>}
+          {mentoringMessage && <p className="dashboard-profile-message" role="status">{mentoringMessage}</p>}
         </section>}
       </div>
     </main>

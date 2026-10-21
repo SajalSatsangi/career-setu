@@ -2,10 +2,14 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateJobDto } from './dto/create-job.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class JobsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   listOpen() {
     return this.prisma.job.findMany({
@@ -56,10 +60,17 @@ export class JobsService {
     if (!job) throw new NotFoundException('Open job not found');
 
     try {
-      return await this.prisma.jobApplication.create({
+      const application = await this.prisma.jobApplication.create({
         data: { studentId, jobId },
         include: { job: true },
       });
+      await this.notificationsService.create(
+        job.recruiterId,
+        'New job application',
+        `A student applied for ${job.title} at ${job.companyName}.`,
+        'JOB_APPLICATION',
+      );
+      return application;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException('You have already applied to this job');
@@ -107,11 +118,18 @@ export class JobsService {
       throw new ConflictException('This application is already closed');
     }
 
-    return this.prisma.jobApplication.update({
+    const updatedApplication = await this.prisma.jobApplication.update({
       where: { id: applicationId },
       data: { status },
       include: { job: true },
     });
+    await this.notificationsService.create(
+      application.studentId,
+      'Application status updated',
+      `Your application for ${job.title} is now ${status.toLowerCase()}.`,
+      'APPLICATION_STATUS',
+    );
+    return updatedApplication;
   }
 
   listStudentApplications(studentId: string) {

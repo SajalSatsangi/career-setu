@@ -212,6 +212,13 @@
 .dashboard-recruiter-job li strong { color: #33466f; font-size: 13px; }
 .dashboard-recruiter-job li small { margin-top: 3px; color: #8290aa; font-size: 11px; }
 .dashboard-recruiter-job select { padding: 7px 9px; border: 1px solid #d5ddea; border-radius: 6px; color: #24355f; background: #fff; font: inherit; font-size: 12px; }
+.dashboard-mentoring { margin-top: 18px; }
+.dashboard-mentor-list { display: grid; gap: 11px; margin-top: 22px; }
+.dashboard-mentor { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 17px; border: 1px solid #edf0f5; border-radius: 8px; }
+.dashboard-mentor h3 { margin: 7px 0 5px; color: #24355f; font-size: 16px; }
+.dashboard-mentor p { max-width: 700px; margin: 0 0 8px; color: #738098; font-size: 13px; line-height: 1.5; }
+.dashboard-mentor small { color: #8290aa; font-size: 11px; }
+.dashboard-mentor button { flex: 0 0 auto; padding: 10px 13px; border: 0; border-radius: 7px; color: #fff; background: #263d72; cursor: pointer; font-weight: 700; }
 
 .dashboard-state { display: grid; min-height: 100vh; place-content: center; justify-items: center; gap: 14px; padding: 24px; text-align: center; }
 .dashboard-state h1 { margin: 0; color: #1f315c; font-size: 27px; }
@@ -230,4 +237,14 @@
   .dashboard-add-form, .dashboard-skill-form { grid-template-columns: 1fr; }
   .dashboard-course { flex-direction: column; }
   .dashboard-job { flex-direction: column; }
+  .dashboard-mentor { flex-direction: column; }
 }
+.dashboard-notifications { margin-bottom: 18px; padding: 24px 28px; border: 1px solid #e2e7f0; border-radius: 10px; background: #fff; }
+.dashboard-notification-list { display: grid; gap: 8px; margin: 18px 0 12px; padding: 0; list-style: none; }
+.dashboard-notification-list li { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 12px; border-left: 3px solid #d66b4d; background: #fffaf6; }
+.dashboard-notification-list li.dashboard-notification-read { border-left-color: #dfe5ef; background: #fafbfd; }
+.dashboard-notification-list strong { color: #24355f; font-size: 13px; }
+.dashboard-notification-list p { margin: 3px 0 0; color: #738098; font-size: 12px; }
+.dashboard-notification-list button, .dashboard-read-all { flex: 0 0 auto; padding: 7px 9px; border: 0; border-radius: 6px; color: #263d72; background: #e9eef8; cursor: pointer; font-size: 11px; font-weight: 700; }
+.dashboard-notification-list span { color: #8290aa; font-size: 11px; }
+.dashboard-read-all { margin-top: 4px; }
